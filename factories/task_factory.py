@@ -13,6 +13,8 @@ from tasks.cleanbeaker_task import CleanBeakerTask
 from tasks.device_operate_task import DeviceOperateTask
 from tasks.opentransportpour_task import OpenTransportPourTask
 from tasks.LiquidMixing_task import LiquidMixing
+#from tasks.uncappour_task import UncapPourTask
+from tasks.pipette_offset_task import PipetteOffsetTask
 
 _task_registry: Dict[str, Type[BaseTask]] = {}
 
@@ -40,3 +42,6 @@ register_task("placepress", PlacePressTask)
 register_task("cleanbeaker", CleanBeakerTask)
 register_task("OpenTransportPour", OpenTransportPourTask)
 register_task("LiquidMixing", LiquidMixing)
+#register_task("uncappour",UncapPourTask)
+register_task("pipette_offset", PipetteOffsetTask)
+

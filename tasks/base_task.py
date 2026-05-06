@@ -311,6 +311,7 @@ class BaseTask(ABC):
             'camera_display': display_data,
             'done': self.reset_needed,
             'gripper_position': self.robot.get_gripper_position(),
+            'frame_idx': self.frame_idx,
         }
         
         if object_path:

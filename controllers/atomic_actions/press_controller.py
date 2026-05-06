@@ -34,7 +34,13 @@ class PressController(BaseController):
     ) -> None:
         # Initialize parent BaseController
         BaseController.__init__(self, name=name)
-        
+        self._random_offset_config = {
+        'y_range': [-0.02, 0.02],    # Y轴偏移范围
+        'z_range': [-0.01, 0.01],    # Z轴偏移范围  
+        'x_range': [-0.005, 0.005],  # X轴也可以有小的随机偏移
+        'apply_to_phase': [0]        # 在哪些阶段应用随机偏移
+        }
+        self._current_random_offsets = self._generate_random_offsets()
         self._event = 0  # Current phase number
         self._t = 0  # Current phase time counter
         self._initial_offset = initial_offset if initial_offset is not None else 0.2 / get_stage_units()
@@ -54,6 +60,15 @@ class PressController(BaseController):
         self._cspace_controller = cspace_controller  # Store Cartesian space controller
         self._start = True
 
+    def _generate_random_offsets(self):
+        """生成当前周期的随机偏移"""
+        config = self._random_offset_config
+        return {
+            'x': np.random.uniform(config['x_range'][0], config['x_range'][1]),
+            'y': np.random.uniform(config['y_range'][0], config['y_range'][1]),
+            'z': np.random.uniform(config['z_range'][0], config['z_range'][1])
+        }
+        
     def get_current_event(self) -> int:
         """
         Get the current phase/event of the state machine.
@@ -104,8 +119,11 @@ class PressController(BaseController):
         if self._event == 0:
             # Phase 0: Move in front of the target object
             target_position[0] -= self._initial_offset  # Offset forward along X-axis
+            jp = target_position.copy()
+            jp[1] += self._current_random_offsets['y'] *20
+            jp[2] += self._current_random_offsets['z'] *20
             target_joint_positions = self._cspace_controller.forward(
-                target_end_effector_position=target_position,
+                target_end_effector_position=jp,
                 target_end_effector_orientation=end_effector_orientation
             )
         elif self._event == 1:
@@ -118,10 +136,14 @@ class PressController(BaseController):
         elif self._event == 2:
             # Phase 2: Press forward to the target position
             target_position[0]+= press_distance/ get_stage_units()
+            jp = target_position.copy()
+            jp[1] += self._current_random_offsets['y'] *20
+            jp[2] += self._current_random_offsets['z'] *20
             target_joint_positions = self._cspace_controller.forward(
                 target_end_effector_position=target_position,
                 target_end_effector_orientation=end_effector_orientation
             )
+        
         self._t += self._events_dt[self._event]
         if self._t >= 1.0:
             self._event += 1

@@ -76,7 +76,7 @@ class PickPourTaskController(BaseController):
         self.last_error_info = None 
         
         if self.current_phase == Phase.PICKING:
-            required_height = self.initial_position[2] + 0.12
+            required_height = self.initial_position[2] + 0.01
             success = object_pos[2] > required_height
             if not success:
                 self.last_error_info = {

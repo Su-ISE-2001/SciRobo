@@ -223,6 +223,7 @@ class PickController(BaseController):
                 target_end_effector_position=self.target_position,
                 target_end_effector_orientation=end_effector_orientation
             )
+            
             xy_distance = np.linalg.norm(gripper_position[:2] - self.target_position[:2])
             z_distance = abs(gripper_position[2] - self.target_position[2])
             if xy_distance < self._position_threshold and z_distance < self._position_threshold:
@@ -300,13 +301,19 @@ class PickController(BaseController):
             "graduated_cylinder_02": 0.018,
             "graduated_cylinder_03": 0.024,
             "graduated_cylinder_04": 0.030,
+            "Tampa_100mL_Lid_MAT_0": 0.014,
+            "Vidro_100mL_Glass_MAT_0": 0.016,
+            "BalaoVolumetrico_100mL":0.002,
+            "xform": 0.003,  # Dropper pipette (thin cylindrical, tighter grip)
+            "titrationflasks": 0.020,  # Dropper bottle (if picking the whole bottle)
+            "titrationflasks_01": 0.003,  # Pipette dropper (separate, very thin, tighter grip)
         }
 
         for key in gripper_distances:
             if key == item_name.lower():
                 return gripper_distances[key]
 
-        return 0.02
+        return 0.01
 
     def get_pickz_offset(self, item_name):
         """Calculates the vertical offset for the final grasp position.
@@ -334,6 +341,9 @@ class PickController(BaseController):
             "graduated_cylinder_04": 0.0,
             "volume_flask": 0.05,
             "glass_rod": 0.02,
+            "xform": 0.03,  # Dropper pipette - grasp at middle section
+            "titrationflasks": 0.04,  # Dropper bottle
+            "titrationflasks_01": 0.02,  # Pipette dropper (separate object) - grasp slightly above center
         }
 
         for key in offsets:
@@ -359,7 +369,10 @@ class PickController(BaseController):
             "graduated_cylinder_01": 0.05,
             "graduated_cylinder_02": 0.03,
             "graduated_cylinder_03": 0.03,
-            "graduated_cylinder_04": 0.03
+            "graduated_cylinder_04": 0.03,
+            "xform": 0.05,  # Dropper pipette - pre-grasp offset
+            "titrationflasks": 0.06,  # Dropper bottle
+            "titrationflasks_01": 0.04,  # Pipette dropper (separate object) - pre-grasp offset
         }
 
         for key in offsets:

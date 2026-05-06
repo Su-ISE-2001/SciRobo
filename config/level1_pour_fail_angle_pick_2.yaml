@@ -1,0 +1,82 @@
+name: Level1_pour_fail_angle_pick
+
+task_type: "pickpour"
+controller_type: "pour"
+
+mode: "collect"
+
+usd_path: "assets/chemistry_lab/lab_001/lab_001.usd"
+target_path: "/World/beaker1"
+
+max_episodes: 150
+
+infer:
+  type: "local"
+  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
+  policy_model_path: ""
+  policy_config_path: ""
+  normalizer_path: ""
+  host: "127.0.0.1"
+  port: 8000
+  n_obs_steps: 1
+  timeout: 30
+  max_retries: 3
+
+task:
+  max_steps: 1500
+  # 失败模式：模拟夹取角度异常（机器人在夹取时使用错误的角度）
+  failure_mode: "fail_angle_pick"  # 将在夹取时使用错误的角度，导致夹取失败
+  # 使用固定或随机角度偏差（pick阶段生效）
+  angle_offset_deg: -45.0            # 默认固定绕工具轴旋转 45°
+  # 如需随机：提供 range 或 choices
+  # angle_offset_range_deg: [-70.0, 70.0]
+  # angle_offset_choices_deg: [-60, -45, -30, 30, 45, 60]
+  angle_report_threshold_deg: 20.0  # 偏差超过该阈值会打标记（并触发 erro 后缀）
+  left_pos:
+    x: [0.18, 0.33]
+    y: [-0.32, -0.17]
+    z: [0.83, 0.83]
+  obj_paths:
+    - path: "/World/beaker2"
+      position_range:
+        x: [0.22, 0.37]
+        y: [0.0, 0.15]
+        z: [0.83, 0.83]
+        
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    translation: [2, -0.1, 2]
+    resolution: [256, 256]
+    focal_length: 5
+    orientation: [0.61237, 0.35355, 0.35355, 0.61237]
+    image_type: "rgb"
+
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    translation: [0.1, -0.1, 3]
+    resolution: [256, 256]
+    focal_length: 5
+    orientation: [0.70711, 0, 0, -0.70711]
+    image_type: "rgb"
+
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_3"
+    resolution: [256, 256]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  position: [-0.4, -0, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+

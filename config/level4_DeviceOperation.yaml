@@ -17,7 +17,7 @@ task:
   device_interior_position: [0.52, 0.04, 1.11]
   beaker3_target_position: [0.42, 0.1, 1.12]
   button_position: [0.45, 0.2, 0.77]
-  max_steps: 4000
+  max_steps: 6000
 
   obj_paths:
     - path: "/World/beaker2"
@@ -36,7 +36,7 @@ task:
         y: [0.13, 0.18]
         z: [0.976, 0.976]
 
-max_episodes: 150
+max_episodes: 10
 
 cameras_names: ["camera_1", "camera_2", "camera_3"]
 

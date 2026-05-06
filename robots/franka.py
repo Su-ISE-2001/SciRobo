@@ -9,6 +9,7 @@
 from typing import List, Optional
 
 import carb
+import os
 import numpy as np
 from omni.isaac.core.prims.rigid_prim import RigidPrim
 from omni.isaac.core.robots.robot import Robot
@@ -57,10 +58,16 @@ class Franka(Robot):
             if usd_path:
                 add_reference_to_stage(usd_path=usd_path, prim_path=prim_path)
             else:
-                assets_root_path = get_assets_root_path()
-                if assets_root_path is None:
-                    carb.log_error("Could not find Isaac Sim assets folder")
-                usd_path = assets_root_path + "/Isaac/Robots/Franka/franka.usd"
+                # Prefer local USD to avoid blocking Nucleus asset-root check (omni.client.stat warning)
+                repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+                local_usd = os.path.join(repo_root, "assets", "robots", "Franka.usd")
+                if os.path.exists(local_usd):
+                    usd_path = local_usd
+                else:
+                    assets_root_path = get_assets_root_path()
+                    if assets_root_path is None:
+                        carb.log_error("Could not find Isaac Sim assets folder")
+                    usd_path = assets_root_path + "/Isaac/Robots/Franka/franka.usd"
                 add_reference_to_stage(usd_path=usd_path, prim_path=prim_path)
             if self._end_effector_prim_name is None:
                 self._end_effector_prim_path = prim_path + "/panda_rightfinger"

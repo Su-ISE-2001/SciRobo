@@ -1,0 +1,216 @@
+from omni.isaac.core.controllers import BaseController
+from omni.isaac.core.utils.stage import get_stage_units
+from omni.isaac.core.utils.types import ArticulationAction
+from omni.isaac.core.utils.rotations import euler_angles_to_quat
+import numpy as np
+import typing
+from omni.isaac.manipulators.grippers.gripper import Gripper
+
+class PressControllerIncomplete(BaseController):
+    """
+    按下控制器，模拟按钮未被完全按下的情况。
+    机器人在按下按钮时，按下距离不足，导致按钮未被完全按下。
+    
+    阶段：
+    - Phase 0: Move the end effector in front of the target object (正常)
+    - Phase 1: Close the gripper (正常)
+    - Phase 2: 稍微往前按一段距离，但不足以完全按下按钮
+    """
+    
+    def __init__(
+        self,
+        name: str,
+        cspace_controller: BaseController,
+        gripper: Gripper = None,
+        end_effector_initial_height: typing.Optional[float] = None,
+        initial_offset: typing.Optional[float] = None,
+        events_dt: typing.Optional[typing.List[float]] = None,
+        press_distance_reduction: float = 0.15,  # 按下距离减少的比例（默认减少85%，只按15%的距离）
+    ) -> None:
+        # Initialize parent BaseController
+        BaseController.__init__(self, name=name)
+        self._random_offset_config = {
+        'y_range': [-0.02, 0.02],    # Y轴偏移范围
+        'z_range': [-0.01, 0.01],    # Z轴偏移范围  
+        'x_range': [-0.005, 0.005],  # X轴也可以有小的随机偏移
+        'apply_to_phase': [0]        # 在哪些阶段应用随机偏移
+        }
+        self._current_random_offsets = self._generate_random_offsets()
+        self._event = 0  # Current phase number
+        self._t = 0  # Current phase time counter
+        self._initial_offset = initial_offset if initial_offset is not None else 0.2 / get_stage_units()
+        self._press_distance_reduction = press_distance_reduction  # 按下距离减少比例
+        
+        if events_dt is None:
+            self._events_dt = [0.005, 0.1, 0.01]  # Default phase durations
+        else:
+            self._events_dt = events_dt
+            if not isinstance(self._events_dt, (np.ndarray, list)):
+                raise Exception("events_dt must be a list or NumPy array")
+            elif isinstance(self._events_dt, np.ndarray):
+                self._events_dt = events_dt.tolist()
+            if len(self._events_dt) != 3:
+                raise Exception("events_dt length must be exactly 3")
+        
+        self._cspace_controller = cspace_controller  # Store Cartesian space controller
+        self._start = True
+        self._phase0_target_position = None  # 保存阶段0的目标位置
+        self._exception_fired = False
+        self._exception_reported = False
+
+    def _generate_random_offsets(self):
+        """生成当前周期的随机偏移"""
+        config = self._random_offset_config
+        return {
+            'x': np.random.uniform(config['x_range'][0], config['x_range'][1]),
+            'y': np.random.uniform(config['y_range'][0], config['y_range'][1]),
+            'z': np.random.uniform(config['z_range'][0], config['z_range'][1])
+        }
+        
+    def get_current_event(self) -> int:
+        """
+        Get the current phase/event of the state machine.
+
+        Returns:
+            int: Current phase/event number.
+        """
+        return self._event
+    
+    def forward(
+        self,
+        target_position: np.ndarray,
+        current_joint_positions: np.ndarray,
+        gripper_control,
+        end_effector_orientation: typing.Optional[np.ndarray] = None,
+        press_distance: float = 0.04
+    ) -> ArticulationAction:
+        """
+        Execute one step of the pressing action.
+        在按下阶段使用减少的按下距离，导致按钮未被完全按下。
+        
+        Args:
+            target_position (np.ndarray): Target pressing position.
+            current_joint_positions (np.ndarray): Current robot joint positions.
+            gripper_control: Gripper controller.
+            end_effector_orientation (np.ndarray, optional): End effector orientation.
+            press_distance (float): Normal press distance (will be reduced).
+        
+        Returns:
+            ArticulationAction: Robot control action.
+        """
+        
+        if self._start:
+            # Initial state: Open the gripper
+            self._start = False
+            target_joint_positions = [None] * current_joint_positions.shape[0]
+            target_joint_positions[7] = 0.04 / get_stage_units()  # Open the gripper
+            target_joint_positions[8] = 0.04 / get_stage_units()  # Open the gripper
+            return ArticulationAction(joint_positions=target_joint_positions)
+        
+        if self.is_done():
+            # Pause or done state: Maintain current joint positions
+            target_joint_positions = [None] * current_joint_positions.shape[0]
+            return ArticulationAction(joint_positions=target_joint_positions)
+        
+        if end_effector_orientation is None:
+            end_effector_orientation = euler_angles_to_quat(np.array([0, np.pi, 0]))
+        
+        # Execute the current phase action
+        if self._event == 0:
+            # Phase 0: Move in front of the target object (正常)
+            # 保存原始目标位置（按钮位置）
+            self._phase0_target_position = target_position.copy()
+            target_position[0] -= self._initial_offset  # Offset forward along X-axis
+            jp = target_position.copy()
+            jp[1] += self._current_random_offsets['y'] *20
+            jp[2] += self._current_random_offsets['z'] *20
+            target_joint_positions = self._cspace_controller.forward(
+                target_end_effector_position=jp,
+                target_end_effector_orientation=end_effector_orientation
+            )
+        elif self._event == 1:
+            # Phase 1: Close the gripper (正常)
+            target_joint_positions = [None] * current_joint_positions.shape[0]
+            gripper_distance = 0.0015 / get_stage_units()  # Default gripper close distance (adjustable)
+            target_joint_positions[7] = gripper_distance
+            target_joint_positions[8] = gripper_distance
+            target_joint_positions = ArticulationAction(joint_positions=target_joint_positions)
+        elif self._event == 2:
+            # Phase 2: 稍微往前按一段距离，但不足以完全按下按钮
+            # 使用减少的按下距离，导致按钮未被完全按下
+            # 从按钮前方位置（阶段0的位置）向前按减少的距离
+            if self._phase0_target_position is None:
+                # 如果没有保存阶段0的位置，使用当前target_position
+                self._phase0_target_position = target_position.copy()
+                self._phase0_target_position[0] += self._initial_offset  # 恢复原始按钮位置
+            
+            reduced_press_distance = press_distance * self._press_distance_reduction
+            print(f"按下阶段：正常按下距离={press_distance:.4f}米, 减少比例={self._press_distance_reduction:.2f}, 实际按下距离={reduced_press_distance:.4f}米")
+            
+            # 从按钮前方位置向前按减少的距离
+            target_position[0] = self._phase0_target_position[0] - self._initial_offset + reduced_press_distance / get_stage_units()
+            jp = target_position.copy()
+            jp[1] += self._current_random_offsets['y'] *20
+            jp[2] += self._current_random_offsets['z'] *20
+            target_joint_positions = self._cspace_controller.forward(
+                target_end_effector_position=target_position,
+                target_end_effector_orientation=end_effector_orientation
+            )
+            # 标记未完全按下异常
+            self._exception_fired = True
+        
+        self._t += self._events_dt[self._event]
+        if self._t >= 1.0:
+            self._event += 1
+            self._t = 0
+        
+        return target_joint_positions
+
+    
+    def reset(
+        self,
+        initial_offset: typing.Optional[float] = None,
+        events_dt: typing.Optional[typing.List[float]] = None
+    ) -> None:
+        """
+        Reset the state machine to initial state.
+        
+        Args:
+            initial_offset (float, optional): New initial offset distance.
+            events_dt (list of float, optional): New list of phase durations.
+        """
+        BaseController.reset(self)
+        self._cspace_controller.reset()
+        self._event = 0
+        self._t = 0
+        self._phase0_target_position = None
+        if initial_offset is not None:
+            self._initial_offset = initial_offset
+        if events_dt is not None:
+            self._events_dt = events_dt
+            if not isinstance(self._events_dt, (np.ndarray, list)):
+                raise Exception("events_dt must be a list or NumPy array")
+            elif isinstance(self._events_dt, np.ndarray):
+                self._events_dt = events_dt.tolist()
+            if len(self._events_dt) != 3:
+                raise Exception("events_dt length must be exactly 3")
+        self._start = True
+        self._exception_fired = False
+        self._exception_reported = False
+
+    def get_incomplete_press_info(self):
+        """返回一次性未完全按下的异常信息，用于截图/命名。"""
+        if self._exception_fired and not self._exception_reported:
+            self._exception_reported = True
+            return {
+                "type": "incomplete_press",
+                "message": f"Button not fully pressed (scale={self._press_distance_reduction:.2f})",
+                "suffix": "erro",
+                "color": (0, 0, 255),
+            }
+        return None
+    
+    def is_done(self) -> bool:
+        # Check if the state machine is done
+        return self._event >= len(self._events_dt)
+

@@ -44,6 +44,8 @@ class BaseController(ABC):
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         OmegaConf.register_new_resolver("eval", lambda x: eval(x))
+        self.dataset_enabled = getattr(cfg, "enable_dataset", True)
+
         if hasattr(cfg, "mode"):
             self.mode = cfg.mode # "collect" or "infer"
             if self.mode == "collect":
@@ -97,13 +99,40 @@ class BaseController(ABC):
     
     def _init_collect_mode(self, cfg, robot=None):
         """Initialize the controller for collect mode."""
-        self.data_collector = create_collector(
-            cfg.collector.type,
-            camera_configs=cfg.cameras,
-            save_dir=cfg.multi_run.run_dir,
-            max_episodes=cfg.max_episodes,
-            compression=cfg.collector.compression
-        )
+        if not self.dataset_enabled:
+            # 空收集器：不写入数据集，只支持计数接口
+            class _NullCollector:
+                def __init__(self, max_episodes: int):
+                    self.max_episodes = max_episodes
+                    self.episode_count = 0
+
+                def cache_step(self, *args, **kwargs):
+                    return
+
+                def write_cached_data(self, *args, **kwargs):
+                    # 仍然递增计数，保持与 episode 流程一致
+                    self.episode_count += 1
+
+                def clear_cache(self):
+                    return
+
+                def close(self):
+                    return
+
+            # 优先使用 collector.max_episodes，如果不存在则使用顶层的 max_episodes
+            max_episodes = getattr(cfg.collector, 'max_episodes', None) or cfg.max_episodes
+            self.data_collector = _NullCollector(max_episodes)
+            print("[BaseController] Dataset saving disabled; screenshots only.")
+        else:
+            # 优先使用 collector.max_episodes，如果不存在则使用顶层的 max_episodes
+            max_episodes = getattr(cfg.collector, 'max_episodes', None) or cfg.max_episodes
+            self.data_collector = create_collector(
+                cfg.collector.type,
+                camera_configs=cfg.cameras,
+                save_dir=cfg.multi_run.run_dir,
+                max_episodes=max_episodes,
+                compression=cfg.collector.compression
+            )
     
     def _init_infer_mode(self, cfg, robot=None): 
         """Initialize the controller for infer mode."""
@@ -118,13 +147,10 @@ class BaseController(ABC):
         )
     
     def episode_num(self) -> int:
-        """Get the current episode number.
-        
-        Returns:
-            int: Current episode number
-        """
+        """Get the current episode number."""
         if self.mode == "collect":
-            return self.data_collector.episode_count
+            # 兼容 data_collector 未写入或仅 _episode_num 增长的情况
+            return max(self.data_collector.episode_count, self._episode_num)
         return self._episode_num
     
     def reset(self) -> None:

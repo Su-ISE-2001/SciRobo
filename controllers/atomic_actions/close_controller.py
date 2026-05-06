@@ -32,7 +32,8 @@ class CloseController(BaseController):
         if self.furniture_type == "drawer":
             self._events_dt = [0.0005, 0.002, 0.05, 0.008]
         else:
-            self._events_dt = [0.0025, 0.005, 0.005]
+            # 增加一个阶段：先移动到门边让门稍微关闭
+            self._events_dt = [0.0025, 0.0025, 0.005, 0.005]
             
         if events_dt is not None:
             self._events_dt = events_dt
@@ -42,8 +43,8 @@ class CloseController(BaseController):
                 self._events_dt = events_dt.tolist()
             if len(self._events_dt) != 4 and self.furniture_type == "drawer":
                 raise Exception(f"events_dt length must be 4, got {len(self._events_dt)}")
-            if len(self._events_dt) != 3 and self.furniture_type == "door":
-                raise Exception(f"events_dt length must be 3, got {len(self._events_dt)}")
+            if len(self._events_dt) != 4 and self.furniture_type == "door":
+                raise Exception(f"events_dt length must be 4, got {len(self._events_dt)}")
         
         self._position_threshold = 0.01 / get_stage_units()
 
@@ -125,17 +126,65 @@ class CloseController(BaseController):
 
     def _execute_door_phase(self, handle_position, end_effector_orientation, current_joint_positions, revolute_joint_position, gripper_position, angle = 50):
         if self._event == 0:
-            handle_position[0] -= 0.05
-            handle_position[2] += 0.1
+            # 阶段0：移动到门边（门的外侧边缘），让门稍微关闭一点
+            # 门是逆时针打开的，门把手在门的外侧
+            # 先移动到门的外侧边缘，推门边让门稍微关闭
+            target_position = handle_position.copy()
+            # 从上方接近
+            target_position[2] += 0.1
+            
+            # 计算门的外侧方向（门把手所在的一侧）
+            if revolute_joint_position is not None:
+                # 计算从门铰链到门把手的向量（门的方向）
+                door_vector = handle_position[:2] - revolute_joint_position[:2]
+                door_vector_norm = np.linalg.norm(door_vector)
+                if door_vector_norm > 1e-6:
+                    door_vector_normalized = door_vector / door_vector_norm
+                    # 对于逆时针打开的门，外侧方向是顺时针旋转90度
+                    door_outer_normal = np.array([door_vector_normalized[1], -door_vector_normalized[0]])
+                    # 移动到门的外侧边缘（门把手所在的一侧）
+                    # 沿着门的方向，但稍微向外侧偏移，到达门边
+                    target_position[0] = handle_position[0] + door_outer_normal[0] * 0.05
+                    target_position[1] = handle_position[1] + door_outer_normal[1] * 0.05
+            
             target_joint_positions = self._cspace_controller.forward(
-                target_end_effector_position=handle_position,
+                target_end_effector_position=target_position,
                 target_end_effector_orientation=end_effector_orientation
             )
-            xy_distance = np.linalg.norm(gripper_position[:2] - handle_position[:2])
-            if xy_distance < self._position_threshold:
+            xy_distance = np.linalg.norm(gripper_position[:2] - target_position[:2])
+            if xy_distance < 0.05:  # 放宽阈值
                 self._event += 1
                 self._t = 0
         elif self._event == 1:
+            # 阶段1：推门边，让门稍微关闭一点
+            # 沿着门关闭的方向（向门铰链方向）推门
+            if revolute_joint_position is not None:
+                # 计算从门把手到门铰链的方向（门关闭的方向）
+                close_direction = revolute_joint_position[:2] - handle_position[:2]
+                close_direction_norm = np.linalg.norm(close_direction)
+                if close_direction_norm > 1e-6:
+                    close_direction_normalized = close_direction / close_direction_norm
+                    # 向门铰链方向推门，让门稍微关闭
+                    target_position = handle_position.copy()
+                    target_position[0] += close_direction_normalized[0] * 0.05  # 推门5cm
+                    target_position[1] += close_direction_normalized[1] * 0.05
+                    target_position[2] += 0.1  # 保持高度
+                else:
+                    target_position = handle_position.copy()
+                    target_position[2] += 0.1
+            else:
+                target_position = handle_position.copy()
+                target_position[2] += 0.1
+            
+            target_joint_positions = self._cspace_controller.forward(
+                target_end_effector_position=target_position,
+                target_end_effector_orientation=end_effector_orientation
+            )
+            xy_distance = np.linalg.norm(gripper_position[:2] - target_position[:2])
+            if xy_distance < 0.05:
+                self._event += 1
+                self._t = 0
+        elif self._event == 2:
             if self.position_rotation_interp_iter is None:
                 self.start_position = handle_position.copy()
                 if revolute_joint_position[1] > self.start_position[1]:
@@ -163,6 +212,35 @@ class CloseController(BaseController):
                 self._t = 0
                 target_joint_positions = ArticulationAction(joint_positions=[None] * current_joint_positions.shape[0])
         elif self._event == 2:
+            # 阶段2：推门关闭（旋转门）
+            if self.position_rotation_interp_iter is None:
+                self.start_position = handle_position.copy()
+                if revolute_joint_position[1] > self.start_position[1]:
+                    angle = -angle
+                self.target_position = self.rotate_around_z_axis(self.start_position, revolute_joint_position, -angle)
+                num_interpolation = int(600 * np.linalg.norm(self.start_position - self.target_position))
+                alphas = np.linspace(start=0, stop=1, num=num_interpolation)[1:]
+                position_rotation_interp_list = self.action_interpolation(
+                    self.start_position, 
+                    end_effector_orientation,
+                    self.target_position,
+                    self.rotate_quaternion_around_x(end_effector_orientation, -angle),
+                    alphas,
+                    joint_pos=revolute_joint_position
+                )
+                self.position_rotation_interp_iter = iter(position_rotation_interp_list)
+            try:
+                self.trans_interp, self.rotation_interp = next(self.position_rotation_interp_iter)
+                target_joint_positions = self._cspace_controller.forward(
+                    target_end_effector_position=self.trans_interp,
+                    target_end_effector_orientation=self.rotation_interp
+                )
+            except:
+                self._event += 1
+                self._t = 0
+                target_joint_positions = ArticulationAction(joint_positions=[None] * current_joint_positions.shape[0])
+        elif self._event == 3:
+            # 阶段3：收回手臂
             target_handle_position = handle_position.copy()
             target_handle_position[0] -= 0.2
             target_joint_positions = self._cspace_controller.forward(

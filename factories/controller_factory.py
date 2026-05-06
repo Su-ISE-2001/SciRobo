@@ -19,6 +19,11 @@ from controllers.opentransportpour_controller import OpenTransportPourController
 from controllers.LiquidMixing_controller import LiquidMixingController
 from controllers.close_controller import CloseTaskController
 from controllers.openclose_controller import OpenCloseTaskController
+#from controllers.uncappour_controller import UncapPourController
+from controllers.pipette_offset_controller import PipetteOffsetTaskController
+from controllers.pour_controller_aim import PourTaskControllerAim
+from controllers.place_controller_aim import PlaceTaskAimController
+from controllers.stir_controller_pickaim import StirTaskControllerPickAim
 
 _controller_registry: Dict[str, Type[BaseController]] = {}
 
@@ -49,3 +54,8 @@ register_controller("cleanbeaker7policy", CleanBeaker7PolicyTaskController)
 register_controller("device_operate", DeviceOperateController)
 register_controller("OpenTransportPour", OpenTransportPourController)
 register_controller("LiquidMixing", LiquidMixingController)
+#register_controller("uncappour", UncapPourController)
+register_controller("pipette_offset", PipetteOffsetTaskController)
+register_controller("pour_aim", PourTaskControllerAim)
+register_controller("place_aim", PlaceTaskAimController)
+register_controller("stir_pick_aim", StirTaskControllerPickAim)

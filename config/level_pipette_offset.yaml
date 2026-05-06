@@ -1,0 +1,86 @@
+name: PipetteOffsetDemo
+
+task_type: "pipette_offset"
+controller_type: "pipette_offset"
+
+mode: "collect"  # this controller doesn't require a learned policy
+usd_path: "assets/chemistry_lab/lab_003/lab_003.usd"
+
+max_episodes: 100
+
+task:
+  max_steps: 1000
+  # The pipette/dropper to pick up (child object inside TitrationFlasks_01)
+  pipette_path: "/World/TitrationFlasks_01/Xform"
+  # The dropper bottle (below the pipette)
+  bottle_path: "/World/TitrationFlasks"
+  # The target surface/object to drop on (e.g., beaker opening)
+  drop_target_path: "/World/beaker_2"
+  
+  # Fixed object positions (robot is at [-0.4, 0, 0.71])
+  # Objects will be placed at fixed positions in front of the robot
+  obj_paths:
+    - path: "/World/TitrationFlasks"  # Dropper bottle (bottom)
+      position_range:
+        x: [0.18, 0.18]   # Closer to robot (reduced from 0.25)
+        y: [-0.10, -0.10]  # Left side, fixed
+        z: [0.72, 0.72]    # Table height
+    - path: "/World/TitrationFlasks_01"  # Pipette (on top of bottle)
+      position_range:
+        x: [0.18, 0.18]    # Same X as bottle (closer to robot)
+        y: [-0.10, -0.10]  # Same Y as bottle
+        z: [0.72, 0.72]    # Slightly above the bottle
+    - path: "/World/beaker_2"  # Target beaker
+      position_range:
+        x: [0.25, 0.25]    # Fixed position
+        y: [0.10, 0.10]    # Right side (separated from pipette)
+        z: [0.82, 0.82]    # Table height
+  
+  # Approach and drop heights (meters, world frame)
+  approach_height: 0.20
+  drop_height: 0.90  # Adjust based on beaker height in your scene
+  # Offset config: choose fixed or random
+  offset_mode: "fixed"  # "fixed" | "random"
+  offset_xy: [0.0, 0.0]  # meters, when fixed (center of beaker)
+  # If you want to test offset accuracy, use random:
+  # offset_mode: "random"
+  # offset_xy_range:
+  #   x: [-0.03, 0.03]
+  #   y: [-0.03, 0.03]
+
+cameras:
+  - prim_path: "/World/Camera1"
+    name: "camera_1"
+    translation: [2, 0, 2]
+    resolution: [256, 256]
+    focal_length: 4
+    orientation: [0.61237, 0.35355, 0.35355, 0.61237]
+    image_type: "rgb"
+  - prim_path: "/World/Camera2"
+    name: "camera_2"
+    translation: [0.1, 0, 2.5]
+    resolution: [256, 256]
+    focal_length: 4
+    orientation: [0.70711, 0, 0, -0.70711]
+    image_type: "rgb"
+  - prim_path: "/World/Franka/panda_hand/arm_camera"
+    name: "camera_ee"
+    resolution: [256, 256]
+    image_type: "rgb"
+
+robot:
+  type: "franka"
+  position: [-0.4, 0.0, 0.71]
+
+collector:
+  type: "default"
+  compression: gzip
+
+hydra:
+  run:
+    dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+multi_run:
+  run_dir: outputs/${mode}/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}
+
+

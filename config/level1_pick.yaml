@@ -8,7 +8,7 @@ mode: "collect"
 usd_path: "assets/chemistry_lab/lab_001/lab_001.usd"
 
 
-max_episodes: 100
+max_episodes: 150
 
 infer:
   type: "local"
@@ -60,6 +60,11 @@ robot:
 collector:
   type: "default"
   compression: gzip
+  save_dir: 'robot_data'
+  max_episodes: 150
+  image_format: 'jpg'
+  image_quality: 85
+
 
 hydra:
   run:

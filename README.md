@@ -1,391 +1,181 @@
-<div align="center">
-  <img src="images/logo.png" alt="Logo" width="180">
-</div>
+# SciRobot
 
-# [NeurIPS 2025] LabUtopia: High-Fidelity Simulation and Hierarchical Benchmark for Scientific Embodied Agents
+SciRobot 是一个基于 **NVIDIA Isaac Sim** 的实验室机器人仿真与数据构建项目，核心目标是进行**异常注入（Anomaly Injection）**：在标准实验任务中系统性注入失败模式，生成可复现的异常轨迹、图像与状态数据，用于异常检测、故障诊断和鲁棒策略评测。
 
-<div align="center">
+## 主要特性
 
-[![Paper](https://img.shields.io/badge/📄_Paper-arXiv-red.svg)](https://arxiv.org/pdf/2505.22634v1.pdf)
-[![arXiv](https://img.shields.io/badge/arXiv-2505.22634-b31b1b.svg)](https://arxiv.org/abs/2505.22634)
-[![Website](https://img.shields.io/badge/🌐_Website-LabUtopia-blue.svg)](https://rui-li023.github.io/labutopia-site/)
-[![Dataset](https://img.shields.io/badge/HuggingFace-Dataset-orange?logo=huggingface)](https://huggingface.co/datasets/Ruinwalker/Labutopia-Dataset)
+- 基于 Isaac Sim 的可视化与无头（headless）仿真运行
+- 使用 Hydra 配置系统管理多任务实验
+- 支持批量任务循环执行（Shell 脚本一键跑多个任务）
+- 面向异常注入的任务配置（如 `fail_position`、`fail_angle`、`drop`、`incomplete`、`no_*`）
+- 支持截图与视频输出，便于异常回放、定位与复现
+- 支持可选关闭数据集写入（`--no-dataset`）
 
-</div>
+## 异常注入能力（核心）
 
-<div align="center">
-  <img src="images/teaser.png" alt="LabUtopia Teaser" width="80%">
-</div>
+SciRobot 不是只跑成功轨迹，而是重点构建“可控异常样本”。当前配置体系支持在多任务中注入不同失效类型，例如：
 
-[中文版 README](README_CN.md) | [English README](README.md)
+- **位姿偏差类**：`fail_position`、`wrong_angle`、`fail_angle_pick`
+- **抓取/交互失败类**：`fail_grasp`、`drop`、`no_pick`、`no_press`
+- **过程不完整类**：`incomplete_open`、`incomplete_close`、`incomplete_angle`
+- **步骤缺失类**：`no_open`、`no_close`、`no_stir`
+
+这些异常配置可用于：
+
+- 异常检测模型训练（normal vs abnormal）
+- 过程级故障定位（在哪一步失败、为何失败）
+- 控制器鲁棒性评测（对扰动和执行偏差的容忍能力）
 
 ## System Requirements
-- NVIDIA GPU with CUDA support (RTX series recommended, Isaac Sim does not support A100/A800)
-- Ubuntu 22.04 (tested version)
+
+- NVIDIA GPU with CUDA support (RTX series recommended)
+- Linux (Ubuntu recommended)
 - conda
 - Python 3.10
-- Isaac Sim 4.2
+- Isaac Sim compatible runtime
 
-## 🛠️ Installation
+##  环境配置
 
-### 1. Code Download
-
-Download the code and pull scene assets:
+### 1. 代码下载
 
 ```bash
-git clone https://github.com/Rui-li023/LabUtopia.git
-sudo apt install git-lfs 
+git clone https://github.com/Su-ISE-2001/SciRobo.git
+cd SciRobo
+```
+
+如果你是从其他仓库拷贝过来的代码，请先确认当前目录就是项目根目录。
+
+### 2. 安装 Git LFS（强烈建议）
+
+本项目包含大量场景与资源文件，建议启用 Git LFS：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git-lfs
+git lfs install
 git lfs pull
 ```
 
-### 2. Environment Creation
-Create and activate a new conda environment:
+### 3. 创建并激活 Conda 环境
+
 ```bash
-conda create -n labutopia python=3.10 -y
-conda activate labutopia
+conda create -n isaac_env42 python=3.10 -y
+conda activate isaac_env42
 ```
 
-### 3. Dependencies Installation
-Install required packages:
+### 4. 安装项目依赖
+
 ```bash
-# Install PyTorch
-pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu121
-
-# Install Isaac Sim
-pip install isaacsim==4.2.0.2 isaacsim-extscache-physics==4.2.0.2 isaacsim-extscache-kit==4.2.0.2 isaacsim-extscache-kit-sdk==4.2.0.2 --extra-index-url https://pypi.nvidia.com
-
-# Install other dependencies
 pip install -r requirements.txt
-
-# Run script to setup .vscode/settings.json
-python setup_vscode_settings.py
 ```
 
-## Code Structure
+### 5.（可选）Isaac Sim 环境初始化
 
-```
-LabSim/
-├── assets/                # Resource files directory
-│   ├── chemistry_lab/     # Chemistry lab scene resources
-│   ├── fetch/             # Fetch robot resources
-│   ├── navigation/        # Navigation task resources
-│   └── robots/            # Robot model resources
-├── config/                # Configuration files directory
-│   ├── level1_*.yaml    # Level 1 basic task configs
-│   ├── level2_*.yaml    # Level 2 combined task configs
-│   ├── level3_*.yaml    # Level 3 generalization task configs
-│   └── level4_*.yaml    # Level 4 long sequence task configs
-├── controllers/         # Controller implementations
-│   ├── atomic_actions/  # Basic action controllers
-│   ├── inference_engines/ # Inference engine implementations
-│   └── robot_controllers/ # Robot controllers
-├── data_collectors/     # Data collector implementations
-├── factories/           # Factory class implementations
-├── policy/            # Policy model implementations
-├── tasks/             # Task definition implementations
-├── tests/            # Test code
-└── utils/            # Utility functions
-```
+如果你通过 pip 安装 Isaac Sim，可在首次安装后生成 VSCode 配置：
 
-### Design Philosophy
-1. Modular structure for better code organization and maintainability
-2. Scene state and observation data acquisition (including camera images, robot states, and scene object states) are handled in tasks
-3. Robot control and task success condition checking are handled in controllers
-
-## Usage
-
-### Data Collection
-
-Data collection is the first step in training models. LabUtopia supports data collection for multiple task types, and you can also download pre-collected data from our HuggingFace repository.
-
-#### 1. Select Configuration File
-There are multiple pre-configured task files in the `config` folder:
-
-**Level 1 Basic Tasks:**
-- `level1_pick.yaml` - Pick tasks
-- `level1_place.yaml` - Place tasks  
-- `level1_open_door.yaml` - Open door tasks
-- `level1_open_drawer.yaml` - Open drawer tasks
-- `level1_close_door.yaml` - Close door tasks
-- `level1_close_drawer.yaml` - Close drawer tasks
-- `level1_pour.yaml` - Pour tasks
-- `level1_press.yaml` - Press tasks
-- `level1_shake.yaml` - Shake tasks
-- `level1_stir.yaml` - Stir tasks
-
-**Level 2 Combined Tasks:**
-- `level2_ShakeBeaker.yaml` - Shake beaker
-- `level2_StirGlassrod.yaml` - Stir with glass rod
-- `level2_PourLiquid.yaml` - Pour liquid
-- `level2_TransportBeaker.yaml` - Transport beaker
-- `level2_Heat_Liquid.yaml` - Heat liquid
-- `level2_openclose.yaml` - Open and close tasks
-
-**Level 3 Generalization Tasks:**
-- `level3_PourLiquid.yaml` - Complex pour tasks
-- `level3_Heat_Liquid.yaml` - Complex heating tasks
-- `level3_TrabsportBeaker.yaml` - Complex transport tasks
-- `level3_open.yaml` - Complex open tasks
-- `level3_pick.yaml` - Complex pick tasks
-- `level3_press.yaml` - Complex press tasks
-
-**Level 4 Long Sequence Tasks:**
-- `level4_CleanBeaker.yaml` - Clean beaker
-- `level4_DeviceOperation.yaml` - Device operation
-
-#### 2. Modify Configuration Parameters
-
-Each configuration file contains the following main parameters that need to be adjusted according to requirements:
-
-```yaml
-# Basic configuration
-name: level1_pick                    # Task name
-task_type: "pick"                   # Task type
-controller_type: "pick"             # Controller type
-mode: "collect"                     # Mode: collect or infer
-
-# Scene configuration
-usd_path: "assets/chemistry_lab/pick_task/scene.usd"  # Scene file path
-
-# Task parameters
-task:
-  max_steps: 1000                   # Maximum steps
-  obj_paths:                        # Target object configuration
-    - path: "/World/conical_bottle02"
-      position_range:               # Object position range
-        x: [0.22, 0.32]
-        y: [-0.07, 0.03]
-        z: [0.80, 0.80]
-
-# Data collection parameters
-max_episodes: 100                   # Maximum collection episodes
-
-# Camera configuration
-cameras_names: ["camera_1", "camera_2"]
-cameras:
-  - prim_path: "/World/Camera1"
-    name: "camera_1"
-    translation: [2, 0, 2]         # Camera position
-    resolution: [256, 256]         # Resolution
-    focal_length: 6                 # Focal length
-    orientation: [0.61237, 0.35355, 0.35355, 0.61237]  # Orientation
-    image_type: "rgb"              # Image type, rgb depth, point. You can use rgb+depth to get more than one type of image.
-
-# Robot configuration
-robot:
-  type: "franka"                   # Robot type
-  position: [-0.4, -0, 0.71]      # Robot position
-
-# Data collector configuration
-collector:
-  type: "default"                  # Collector type
-  compression: null                # Compression settings
-```
-
-#### 3. Run Data Collection
-
-After selecting the configuration file, run:
 ```bash
-# Use default configuration
+python -m isaacsim --generate-vscode-settings
+```
+
+## 快速开始
+
+### 1) 单任务运行（本地入口）
+
+```bash
 python main.py --config-name level1_pick
 ```
 
-Data will be saved in the `outputs/collect/date/time_taskname/` directory.
+常用参数：
 
-### Training
+- `--headless`：无界面运行
+- `--backend {numpy,gpu}`：仿真后端
+- `--no-video`：关闭视频显示/保存
+- `--config-name <name>`：选择配置（位于 `config/`）
 
-The training process uses collected data to train robot policy models.
-
-#### 1. Select Training Configuration
-
-There are multiple training configurations in the `policy/config/` folder:
-
-- `train_diffusion_unet_image_workspace.yaml` - Diffusion model training (recommended)
-- `train_act_image_workspace.yaml` - ACT model training
-
-#### 2. Modify Training Parameters
-
-Main parameters that need to be adjusted:
-
-```yaml
-# Model configuration
-policy:
-  _target_: policy.policy.diffusion_unet_image_policy.DiffusionUnetImagePolicy
-  shape_meta: ${shape_meta}        # Data shape metadata
-  
-  # Noise scheduler configuration
-  noise_scheduler:
-    num_train_timesteps: 100       # Training timesteps
-    beta_start: 0.0001             # Beta start value
-    beta_end: 0.02                 # Beta end value
-    beta_schedule: squaredcos_cap_v2  # Beta schedule strategy
-
-  # Observation encoder configuration
-  obs_encoder:
-    _target_: policy.model.vision.multi_image_obs_encoder.MultiImageObsEncoder
-    rgb_model:
-      _target_: policy.model.vision.model_getter.get_resnet
-      name: resnet18               # Backbone network
-    resize_shape: [256, 256]      # Resize shape
-    random_crop: False              # Random crop
-
-# Training parameters
-training:
-  device: "cuda:0"                # Training device
-  seed: 42                        # Random seed
-  num_epochs: 8000                # Training epochs
-  lr: 1.0e-4                      # Learning rate
-  batch_size: 64                  # Batch size
-  gradient_accumulate_every: 1     # Gradient accumulation steps
-  
-  # Checkpoint saving
-  checkpoint_every: 30             # Save every 30 epochs
-  val_every: 10                   # Validate every 10 epochs
-
-# Data loader configuration
-dataloader:
-  batch_size: 64                  # Batch size
-  num_workers: 4                  # Number of workers
-  shuffle: True                   # Whether to shuffle data
-
-# Optimizer configuration
-optimizer:
-  _target_: torch.optim.AdamW
-  lr: 1.0e-4                      # Learning rate
-  betas: [0.95, 0.999]           # Adam parameters
-  weight_decay: 1.0e-6           # Weight decay
-```
-
-#### 3. Specify Dataset Location
-Modify the corresponding configuration file in the `policy/config/task` folder, change the `dataset_path` parameter to your dataset folder location.
-
-#### 4. Run Training
+示例：
 
 ```bash
-# Use diffusion model training
-python train.py --config-name=train_diffusion_unet_image_workspace
-
-# Use ACT model training
-python train.py --config-name=train_act_image_workspace
+python main.py --config-name level1_pick --headless --backend gpu
 ```
 
-Training logs and models will be saved in the `outputs/train/date/time_modelname_taskname/` directory.
-
-### Inference
-
-Use trained models for inference testing.
-
-#### 1. Modify Configuration File
-
-Change the mode from `collect` to `infer` in the configuration file and add inference-related configurations:
-
-```yaml
-# Basic configuration
-mode: "infer"                     # Change to inference mode
-
-# Inference configuration
-infer:
-  obs_names: {"camera_1_rgb": 'camera_1_rgb', "camera_2_rgb": 'camera_2_rgb'}
-  
-  # Local inference configuration
-  policy_model_path: "outputs/train/2025.03.25/12.43.59_train_act_image_pick_pick_data/checkpoints/latest.ckpt"
-  policy_config_path: "outputs/train/2025.03.25/12.43.59_train_act_image_pick_pick_data/.hydra/config.yaml"
-  normalizer_path: "outputs/train/2025.03.25/12.43.59_train_act_image_pick_pick_data/checkpoints/normalize.ckpt"
-  
-  # Remote inference configuration (optional)
-  type: "remote"                  # Use remote inference
-  host: "101.126.156.90"         # Server address
-  port: 56434                     # Server port
-  n_obs_steps: 1                  # Observation steps
-  timeout: 30                     # Timeout
-  max_retries: 3                  # Maximum retries
-
-max_episodes: 50                  # Inference episodes
-```
-
-#### 2. Run Inference
+### 2) 服务端入口（支持关闭数据集写入）
 
 ```bash
-# Use local model inference
-python main.py --config-name level1_pick
-
-# Use remote inference
-python main.py --config-name level3_PourLiquid
+python main_server.py --config-name level1_pick --headless --no-dataset
 ```
 
-Inference results will be saved in the `outputs/infer/date/time_taskname/` directory.
+你可以将 `--config-name` 替换为异常配置名称来直接运行异常注入实验，例如（需对应 `config/` 中存在的配置文件）：
 
-## Use OpenPI
-
-### Installation
-
-Download our modified OpenPI code:
-
-```
-git clone https://github.com/Rui-li023/openpi.git
+```bash
+python main_server.py --config-name level1_pick_fail_position --headless
+python main_server.py --config-name level1_pour_incomplete_angle --headless
+python main_server.py --config-name level4_DeviceOperation_no_open --headless
 ```
 
-### Data Conversion
+### 3) 批量任务脚本
 
-Convert LabUtopia format data to LeRobot format dataset:
+项目提供了脚本化批量运行方式：
 
-```
-python scripts/convert_labsim_data_to_lerobot.py --data_dir outputs/collect/xxx/xxx/dataset --num_processes 8 --fps 60 --repo_name labutopia/level3-pick
-```
-
-### Remote Inference
-
-LabUtopia supports using remote servers for model inference.
-
-#### Installation
-
-```
-cd openpi/packages/openpi-client
-pip install -e . 
+```bash
+bash main.sh
 ```
 
-#### Configuration
-Configure the remote inference engine in your config file:
+`main_server.sh` 支持后台运行参数：
 
-```yaml
-infer:
-  engine: remote  # Use remote inference engine
-  host: "0.0.0.0"  # OpenPI server host
-  port: 8080  # OpenPI server port (optional)
-  n_obs_steps: 3  # Observation steps
+```bash
+bash main_server.sh --background
 ```
 
-#### Usage
-The OpenPI client provides simplified WebSocket communication with the remote server:
+后台运行后日志会输出到 `logs/`，并保存 PID 文件，便于停止任务。
 
-1. **Initialize**: The client automatically connects to the OpenPI server using WebSocket
-2. **Inference**: Sends observation data (images, poses) to the server and receives action predictions
-3. **Data Format**: Automatically handles image format conversion and pose data serialization
-4. **Error Handling**: Includes fallback mechanisms for failed predictions
+## 结果输出
 
-#### Server Response Format
-The OpenPI server should return actions in one of these formats:
-- `{"action": [action_array]}`
-- `{"actions": [action_array]}`
-- Any dictionary with a key containing "action"
+- `logs/`：运行日志
+- `outputs/`：任务输出
+- 运行目录下通常会包含：
+  - `config.yaml`（本次运行配置快照）
+  - `screenshots/`（按 episode 保存截图）
+  - 视频文件（若未关闭视频保存）
 
-## 📚 Citation
+## 项目结构（简要）
 
-```bibtex
-@article{li2025labutopia,
-  author    = {Li, Rui and Hu, Zixuan and Qu, Wenxi and Zhang, Jinouwen and Yin, Zhenfei and Zhang, Sha and Huang, Xuantuo and Wang, Hanqing and Wang, Tai and Pang, Jiangmiao and Ouyang, Wanli and Bai, Lei and Zuo, Wangmeng and Duan, Ling-Yu and Zhou, Dongzhan and Tang, Shixiang},
-  title     = {LabUtopia: High-Fidelity Simulation and Hierarchical Benchmark for Scientific Embodied Agents},
-  journal   = {arXiv preprint arXiv:2505.22634},
-  year      = {2025},
-}
+```text
+LabUtopia/
+├── assets/              # 场景与资源文件（含大量 LFS 资源）
+├── config/              # Hydra 配置
+├── controllers/         # 控制器实现
+├── data_collectors/     # 数据采集逻辑
+├── factories/           # 工厂方法（robot/task/controller 创建）
+├── robots/              # 机器人相关定义
+├── tasks/               # 任务定义
+├── utils/               # 通用工具
+├── main.py              # 主入口
+├── main_server.py       # 服务端入口
+├── main.sh              # 批量执行脚本（本地）
+└── main_server.sh       # 批量执行脚本（服务端/后台）
 ```
 
-## 📄 License
-This repository contains both source code and data assets:
+## Git LFS 提示
 
-- **Code**  
-  Released under the [MIT License](./LICENSE).  
+若推送时报错 `git-lfs not found`，请先安装并初始化：
 
-- **Data Assets**  
-  Released under the [CC BY-NC 4.0 License](https://creativecommons.org/licenses/by-nc/4.0/).  
-  Free to use and modify for research and educational purposes **only**.  
+```bash
+sudo apt-get install -y git-lfs
+git lfs install
+```
+
+## 常见问题
+
+### 1) 无显示器环境运行报错
+
+请添加 `--headless`，或直接使用 `main_server.sh`（脚本会在无 DISPLAY 环境自动追加 headless 参数）。
+
+### 2) 推送 GitHub 失败
+
+- 先确认 Git LFS 已安装
+- 使用 PAT（HTTPS）或 SSH key 完成 GitHub 认证
+- 再执行 `git push -u <remote> main`
+
+## License
+
+本项目遵循仓库中的许可证文件（如存在 `LICENSE`）。
